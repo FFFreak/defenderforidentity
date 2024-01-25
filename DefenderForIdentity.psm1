@@ -10,6 +10,7 @@ THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #requires -Modules ActiveDirectory, GroupPolicy
 
 #region General settings
+$script:adServer = ""
 
 $script:settings = @{
 
@@ -387,10 +388,20 @@ function New-MDIGPO {
         [Parameter(Mandatory = $false)] [switch] $CreateGpoDisabled
     )
     Write-Verbose -Message ($strings['GPO_Create'] -f $Name)
-    $gpo = New-GPO -Name $Name
+    $gpo = $null
+    if ($script:adServer -ne "") {
+        $gpo = New-GPO -Name $Name -server $script:adServer
+    } else {
+        $gpo = New-GPO -Name $Name
+    }
     if ($gpo) {
         Start-Sleep -Milliseconds 500
-        $gPCFileSysPath = (Get-ADObject -Identity $gpo.Path -Properties gPCFileSysPath).gPCFileSysPath
+        $gPCFileSysPath = $null
+        if ($script:adServer -ne "") {
+            $gPCFileSysPath = (Get-ADObject -Identity $gpo.Path -Properties gPCFileSysPath -server $script:adServer).gPCFileSysPath
+        } else {
+            $gPCFileSysPath = (Get-ADObject -Identity $gpo.Path -Properties gPCFileSysPath).gPCFileSysPath
+        }
         $maxWaitTime = (Get-Date).AddSeconds(3)
         do {
             Start-Sleep -Milliseconds 500
@@ -409,7 +420,12 @@ function Get-MDIGPO {
     param(
         [Parameter(Mandatory)] [string] $Name
     )
-    $gpo = Get-GPO -Name $Name -ErrorAction SilentlyContinue
+    $gpo = $null
+    if ($script:adServer -ne "") {
+        $gpo = Get-GPO -Name $Name -ErrorAction SilentlyContinue -server $script:adServer
+    } else {
+        $gpo = Get-GPO -Name $Name -ErrorAction SilentlyContinue
+    }
     if ($null -eq $gpo) {
         Write-Verbose -Message ("'{0}' - {1}" -f $Name, $strings['GPO_NotFound'])
     }
@@ -421,7 +437,12 @@ function Get-MDIGPOLink {
         [guid] $Guid
     )
     Write-Verbose -Message $strings['GPO_GetLinks']
-    $xml = [xml](Get-GPOReport -Guid $Guid -ReportType Xml)
+    $xml = $null
+    if ($script:adServer -ne "") {
+        $xml = [xml](Get-GPOReport -Guid $Guid -ReportType Xml -server $script:adServer)
+    } else {
+        $xml = [xml](Get-GPOReport -Guid $Guid -ReportType Xml)
+    }
     @($xml.GPO.LinksTo)
 }
 
@@ -457,9 +478,19 @@ function Set-MDIGPOLink {
         Enforced    = $Enforced
         Target      = $Target
     }
-    $link = New-GPLink @gpLink -ErrorAction SilentlyContinue
+    $link  = $null
+    if ($script:adServer -ne "") {
+        $link = New-GPLink @gpLink -ErrorAction SilentlyContinue -server $script:adServer
+    } else {
+        $link = New-GPLink @gpLink -ErrorAction SilentlyContinue
+    }
     if ($null -eq $link) {
-        $link = Set-GPLink @gpLink -ErrorAction SilentlyContinue
+        Start-Sleep -Milliseconds 500
+        if ($script:adServer -ne "") {
+            $link = Set-GPLink @gpLink -ErrorAction SilentlyContinue -server $script:adServer
+        } else {
+            $link = Set-GPLink @gpLink -ErrorAction SilentlyContinue
+        }
     }
     if ($null -eq $link) {
         throw $strings['GPO_UnableToUpdateLink']
@@ -471,7 +502,11 @@ function Get-MDIGPOMachineVersion {
     param(
         [Parameter(Mandatory)] [guid] $Guid
     )
-    (Get-GPO -Guid $Guid).Computer | Select-Object -Property *Version
+    if ($script:adServer -ne "") {
+        (Get-GPO -Guid $Guid -server $script:adServer).Computer | Select-Object -Property *Version
+    } else {
+        (Get-GPO -Guid $Guid).Computer | Select-Object -Property *Version
+    }    
 }
 
 function Set-MDIGPOMachineVersion {
@@ -484,7 +519,11 @@ function Set-MDIGPOMachineVersion {
     Write-Verbose -Message $strings['GPO_UpdateVersion']
     if ($Mode -match 'ALL|DS') {
         $gpoAdObjectPath = 'CN={0},{1}' -f "{$Guid}", (Get-MDIAdPath 'CN=Policies,CN=System,{0}')
-        Set-ADObject -Identity $gpoAdObjectPath -Replace @{versionNumber = $Version } | Out-Null
+        if ($script:adServer -ne "") {
+            Set-ADObject -Identity $gpoAdObjectPath -Replace @{versionNumber = $Version } -server $script:adServer | Out-Null
+        } else {
+            Set-ADObject -Identity $gpoAdObjectPath -Replace @{versionNumber = $Version } | Out-Null
+        }    
     }
     if ($Mode -match 'ALL|Sysvol') {
         $filePath = '\\{0}\SYSVOL\{0}\Policies\{1}\GPT.INI' -f $env:USERDNSDOMAIN, "{$guid}"
@@ -500,7 +539,11 @@ function Get-MDIGPOMachineExtension {
     )
     Write-Verbose -Message $strings['GPO_GetExtension']
     $gpoAdObjectPath = 'CN={0},{1}' -f "{$Guid}", (Get-MDIAdPath 'CN=Policies,CN=System,{0}')
-    Get-ADObject -Identity $gpoAdObjectPath -Properties gPCMachineExtensionNames, VersionNumber
+    if ($script:adServer -ne "") {
+        Get-ADObject -Identity $gpoAdObjectPath -Properties gPCMachineExtensionNames,VersionNumber -server $script:adServer
+    } else {
+        Get-ADObject -Identity $gpoAdObjectPath -Properties gPCMachineExtensionNames,VersionNumber
+    }
 }
 
 function Set-MDIGPOMachineExtension {
@@ -517,7 +560,12 @@ function Set-MDIGPOMachineExtension {
     $Replace = @{gPCMachineExtensionNames = $extensionGuids }
 
     $gpoAdObjectPath = 'CN={0},{1}' -f "{$Guid}", (Get-MDIAdPath 'CN=Policies,CN=System,{0}')
-    $gpoUpdated = Set-ADObject -Identity $gpoAdObjectPath -Replace $Replace -PassThru
+    $gpoUpdated = $null
+    if ($script:adServer -ne "") {
+        $gpoUpdated = Set-ADObject -Identity $gpoAdObjectPath -Replace $Replace -PassThru -server $script:adServer
+    } else {
+        $gpoUpdated = Set-ADObject -Identity $gpoAdObjectPath -Replace $Replace -PassThru
+    }
 
     if ($gpoUpdated) {
         try {
@@ -590,10 +638,18 @@ function Get-MDIProcessorPerformanceGPO {
         [string] $GpoNamePrefix
     )
     $gpoName = Get-MDIGPOName -Name $settings.ProcessorPerformance.GpoName -GpoNamePrefix $GpoNamePrefix
+
+    $gpoUpdated = $null
     $gpo = Get-MDIGPO -Name $gpoName
+
     if ($gpo) {
-        $gpo | Select-Object -Property *,
-        @{N = 'GPRegistryValue'; E = { Get-GPRegistryValue -Guid $gpo.Id.Guid -Key $settings.ProcessorPerformance.Key } }
+        if ($script:adServer -ne $null) {
+            $gpo | Select-Object -Property *,
+            @{N = 'GPRegistryValue'; E = { Get-GPRegistryValue -Guid $gpo.Id.Guid -Key $settings.ProcessorPerformance.Key -server $script:adServer} }
+        } else {
+            $gpo | Select-Object -Property *,
+            @{N = 'GPRegistryValue'; E = { Get-GPRegistryValue -Guid $gpo.Id.Guid -Key $settings.ProcessorPerformance.Key } }
+        }
     }
 }
 
@@ -652,7 +708,12 @@ function Set-MDIProcessorPerformanceGPO {
             ValueName = $settings.ProcessorPerformance.ValueName
             Value     = $settings.ProcessorPerformance.SchemeGuid
         }
-        $gpoUpdated = Set-GPRegistryValue @gppParams
+        $gpoUpdated= $null
+        if ($script:adServer -ne ""){
+            $gpoUpdated = Set-GPRegistryValue @gppParams -server $script:adServer
+        } else {
+            $gpoUpdated = Set-GPRegistryValue @gppParams
+        }
         if (-not ($CreateGpoDisabled)) { $gpoUpdated.GpoStatus = [Microsoft.GroupPolicy.GpoStatus]::UserSettingsDisabled }
         $gpoUpdated.MakeAclConsistent()
 
@@ -945,7 +1006,12 @@ function Get-MDINTLMAuditingGPO {
     $gpoName = Get-MDIGPOName -Name $settings.NTLMAuditing.GpoName -GpoNamePrefix $GpoNamePrefix
     $gpo = Get-MDIGPO -Name $gpoName
     if ($gpo) {
-        $report = [xml](Get-GPOReport -Guid $gpo.Id -ReportType Xml)
+        $report = $null
+        if ($script:adServer -ne ""){
+            $report = [xml](Get-GPOReport -Guid $gpo.Id -ReportType Xml -server $script:adServer)
+        } else {
+            $report = [xml](Get-GPOReport -Guid $gpo.Id -ReportType Xml)
+        }
         $options = $report.GPO.Computer.ExtensionData.Extension.SecurityOptions | Where-Object { $_.KeyName -Match 'AuditReceivingNTLMTraffic|RestrictSendingNTLMTraffic|AuditNTLMInDomain' }
         $RegistryValue = foreach ($opt in $options) {
             $valueName = ($opt.KeyName -split '\\')[-1]
@@ -1117,7 +1183,12 @@ function Get-MDIAdvancedAuditPolicyDCsGPO {
     $gpoName = Get-MDIGPOName -Name $settings.AdvancedAuditPolicyDCs.GpoName -GpoNamePrefix $GpoNamePrefix
     $gpo = Get-MDIGPO -Name $gpoName
     if ($gpo) {
-        $report = [xml](Get-GPOReport -Guid $gpo.Id -ReportType Xml)
+        $report = $null
+        if ($script:adServer -ne ""){
+            $report = [xml](Get-GPOReport -Guid $gpo.Id -ReportType Xml -server $script:adServer)
+        } else {
+            $report = [xml](Get-GPOReport -Guid $gpo.Id -ReportType Xml)
+        }
         $currentSettings = $report.GPO.Computer.ExtensionData.Extension.AuditSetting
         $expectedSettings = $settings.AdvancedAuditPolicyDCs.PolicySettings | ConvertFrom-Csv
         $AuditSettings = foreach ($audit in $expectedSettings) {
@@ -1253,7 +1324,12 @@ function Get-MDIAdvancedAuditPolicyCAsGPO {
     $gpoName = Get-MDIGPOName -Name $settings.AdvancedAuditPolicyCAs.GpoName -GpoNamePrefix $GpoNamePrefix
     $gpo = Get-MDIGPO -Name $gpoName
     if ($gpo) {
-        $report = [xml](Get-GPOReport -Guid $gpo.Id -ReportType Xml)
+        $report = $null
+        if ($script:adServer -ne ""){
+            $report = [xml](Get-GPOReport -Guid $gpo.Id -ReportType Xml -server $script:adServer)
+        } else {
+            $report = [xml](Get-GPOReport -Guid $gpo.Id -ReportType Xml)
+        }
         $currentSettings = $report.GPO.Computer.ExtensionData.Extension.AuditSetting
         $expectedSettings = $settings.AdvancedAuditPolicyCAs.PolicySettings | ConvertFrom-Csv
         $AuditSettings = foreach ($audit in $expectedSettings) {
@@ -1269,7 +1345,11 @@ function Get-MDIAdvancedAuditPolicyCAsGPO {
             }
         }
         $delegation = $settings.AdvancedAuditPolicyCAs.GPPermissions.GetEnumerator() | ForEach-Object {
-            Get-GPPermission -Guid $gpo.Id.Guid -TargetType Group -TargetName $_.Key
+            if ($script:adServer -ne "") {
+                Get-GPPermission -Guid $gpo.Id.Guid -TargetType Group -TargetName $_.Key -server $script:adServer
+            } else {
+                Get-GPPermission -Guid $gpo.Id.Guid -TargetType Group -TargetName $_.Key
+            }
         }
         $gpo = $gpo | Select-Object -Property *, @{N = 'AuditSettings'; E = { $AuditSettings } }, @{N = 'Delegation'; E = { $delegation } }
     }
@@ -1332,6 +1412,7 @@ function Set-MDIAdvancedAuditPolicyCAsGPO {
     $gpo = Get-MDIGPO -Name $gpoName
     if ($null -eq $gpo) {
         $gpo = New-MDIGPO -Name $gpoName -CreateGpoDisabled:$CreateGpoDisabled
+        Start-Sleep -Milliseconds 500
     }
 
     $filePath = '{0}\Machine\Microsoft\Windows NT\Audit' -f $gpo.gPCFileSysPath
@@ -1340,12 +1421,17 @@ function Set-MDIAdvancedAuditPolicyCAsGPO {
 
     if (-not ($CreateGpoDisabled)) { $gpo.GpoStatus = [Microsoft.GroupPolicy.GpoStatus]::UserSettingsDisabled }
     $gpo.MakeAclConsistent()
+    Start-Sleep -Milliseconds 500
     $gpoUpdated = Set-MDIGPOMachineExtension -Guid $gpo.Id.Guid -Extension @(
         $settings.gpoExtensions['Audit Policy Configuration'], $settings.gpoExtensions['Audit Configuration Extension'])
 
     Write-Verbose -Message $strings['GPO_SetDelegation']
     $settings.AdvancedAuditPolicyCAs.GPPermissions.GetEnumerator() | ForEach-Object {
-        Set-GPPermission -Guid $gpo.Id.Guid -TargetType Group -TargetName $_.Key -PermissionLevel $_.Value -Replace | Out-Null
+        if ($script:adServer -ne "") {
+          Set-GPPermission -Guid $gpo.Id.Guid -TargetType Group -TargetName $_.Key -PermissionLevel $_.Value -Replace -server $script:adServer | Out-Null
+        } else {
+          Set-GPPermission -Guid $gpo.Id.Guid -TargetType Group -TargetName $_.Key -PermissionLevel $_.Value -Replace | Out-Null
+        }
     }
 
     if ($null -ne $gpoUpdated) {
@@ -1494,9 +1580,20 @@ function Get-MDICAAuditingGPO {
             Context   = 'Computer'
             Key       = 'HKEY_LOCAL_MACHINE\{0}' -f $settings.CAAuditing.GpoReg
             ValueName = ($settings.CAAuditing.GpoVal).Keys[0]
-        }; $GPPrefRegistryValue = Get-GPPrefRegistryValue @params -ErrorAction SilentlyContinue
+        }; 
+        $GPPrefRegistryValue = $null
+        if ($script:adServer -ne "") {
+            $GPPrefRegistryValue = Get-GPPrefRegistryValue @params -ErrorAction SilentlyContinue -server $script:adServer
+        } else {
+            $GPPrefRegistryValue = Get-GPPrefRegistryValue @params -ErrorAction SilentlyContinue
+        }
+
         $delegation = $settings.CAAuditing.GPPermissions.GetEnumerator() | ForEach-Object {
-            Get-GPPermission -Guid $gpo.Id.Guid -TargetType Group -TargetName $_.Key
+            if ($script:adServer -ne "") {
+                Get-GPPermission -Guid $gpo.Id.Guid -TargetType Group -TargetName $_.Key -server $script:adServer
+            } else {
+                Get-GPPermission -Guid $gpo.Id.Guid -TargetType Group -TargetName $_.Key
+            }
         }
         $gpo = $gpo | Select-Object -Property *, @{N = 'GPPrefRegistryValue'; E = { $GPPrefRegistryValue } }, @{N = 'Delegation'; E = { $delegation } }
     }
@@ -1579,14 +1676,23 @@ function Set-MDICAAuditingGPO {
             Key       = 'HKEY_LOCAL_MACHINE\{0}' -f $settings.CAAuditing.GpoReg
             ValueName = $_.Name
             Order     = -1
-        }; if (Get-GPPrefRegistryValue @params -ErrorAction SilentlyContinue) { $gpo = Remove-GPPrefRegistryValue @params }
+        }; 
+        if ($script:adServer -ne "") {
+            if (Get-GPPrefRegistryValue @params -ErrorAction SilentlyContinue -server $script:adServer) { $gpo = Remove-GPPrefRegistryValue @params -server $script:adServer}
+        } else {
+            if (Get-GPPrefRegistryValue @params -ErrorAction SilentlyContinue) { $gpo = Remove-GPPrefRegistryValue @params }
+        }
 
         $params += @{
             Value  = [int]$_.Value
             Type   = 'DWord'
             Action = 'Update'
         }
-        Set-GPPrefRegistryValue @params | Out-Null
+        if ($script:adServer -ne "") {
+            Set-GPPrefRegistryValue @params -server $script:adServer | Out-Null
+        } else {
+            Set-GPPrefRegistryValue @params | Out-Null
+        }
     }
 
     if (-not ($CreateGpoDisabled)) { $gpo.GpoStatus = [Microsoft.GroupPolicy.GpoStatus]::UserSettingsDisabled }
@@ -1596,7 +1702,11 @@ function Set-MDICAAuditingGPO {
 
     Write-Verbose -Message $strings['GPO_SetDelegation']
     $settings.CAAuditing.GPPermissions.GetEnumerator() | ForEach-Object {
-        Set-GPPermission -Guid $gpo.Id.Guid -TargetType Group -TargetName $_.Key -PermissionLevel $_.Value -Replace | Out-Null
+        if ($script:adServer -ne "") {
+            Set-GPPermission -Guid $gpo.Id.Guid -TargetType Group -TargetName $_.Key -PermissionLevel $_.Value -Replace -server $script:adServer | Out-Null
+        } else {
+            Set-GPPermission -Guid $gpo.Id.Guid -TargetType Group -TargetName $_.Key -PermissionLevel $_.Value -Replace | Out-Null
+        }
     }
 
     if ($null -ne $gpoUpdated) {
@@ -1675,10 +1785,16 @@ function Test-MDIDSA {
         [switch] $Detailed
     )
     $return = @()
-    $account = try {
-        Get-ADUser -Identity $Identity -Properties msDS-PrincipalName
-    } catch { try { Get-ADServiceAccount -Identity $Identity -Properties msDS-PrincipalName } catch { $null } }
-
+    $account = $null 
+    if ($script:AdServer -ne "") {
+        $account = try {
+            Get-ADUser -Identity $Identity -Properties msDS-PrincipalName -server $script:AdServer
+        } catch { try { Get-ADServiceAccount -Identity $Identity -Properties msDS-PrincipalName -server $script:AdServer} catch { $null } }
+    } else {
+        $account = try {
+            Get-ADUser -Identity $Identity -Properties msDS-PrincipalName
+        } catch { try { Get-ADServiceAccount -Identity $Identity -Properties msDS-PrincipalName } catch { $null } }
+    }
     if ($null -eq $account) {
         $false
         Write-Error $strings['DSA_CannotFindIdentity'] -ErrorAction Stop
@@ -1696,8 +1812,12 @@ function Test-MDIDSA {
                     'msDS-PrincipalName' = $_.Properties['msDS-PrincipalName'][0]
                 })
         }
-
-        $domainSid = (Get-ADDomain).DomainSID.Value
+        $domainSid = $null
+        if ($script:AdServer -ne "") {
+            $domainSid = (Get-ADDomain -server $script:AdServer).DomainSID.Value
+        } else {
+            $domainSid = (Get-ADDomain).DomainSID.Value
+        }
         $sensitiveGroups = @{}
         $settings.SensitiveGroups.GetEnumerator() | ForEach-Object {
             $sensitiveGroups.Add(($_.Value -f $domainSid), $_.Key)
@@ -1963,12 +2083,17 @@ function Set-MDIConfiguration {
         [Parameter(Mandatory = $false)] [string] $GpoNamePrefix,
         [Parameter(Mandatory = $false)] [switch] $CreateGpoDisabled,
         [Parameter(Mandatory = $false)] [switch] $SkipGpoLink,
+        [Parameter(Mandatory = $false)] [String] $Server = "",
         [Parameter(Mandatory = $false)] [switch] $Force
     )
 
     Process {
+        if ($Server -ne "") {
+          write-host "Server - $Server" -foreground cyan
+          $script:adServer = $Server
+        }
         foreach ($config in $Configuration) {
-
+	    
             Write-Verbose ($strings['Configuration_Set'] -f $config)
             if (Use-MDIConfigName $config 'AdfsAuditing') { Set-MDIAdfsAuditing }
 
@@ -1979,6 +2104,7 @@ function Set-MDIConfiguration {
                     Set-MDIAdvancedAuditPolicyCAsGPO -CreateGpoDisabled:$CreateGpoDisabled -SkipGpoLink:$SkipGpoLink -GpoNamePrefix $GpoNamePrefix
                 }
             }
+            Start-Sleep -Milliseconds 500
 
             if (Use-MDIConfigName $config 'AdvancedAuditPolicyDCs') {
                 if ($Mode -eq 'LocalMachine') {
@@ -1987,6 +2113,7 @@ function Set-MDIConfiguration {
                     Set-MDIAdvancedAuditPolicyDCsGPO -CreateGpoDisabled:$CreateGpoDisabled -SkipGpoLink:$SkipGpoLink -GpoNamePrefix $GpoNamePrefix
                 }
             }
+            Start-Sleep -Milliseconds 5000
 
             if (Use-MDIConfigName $config 'CAAuditing') {
                 if ($Mode -eq 'LocalMachine') {
@@ -1995,10 +2122,13 @@ function Set-MDIConfiguration {
                     Set-MDICAAuditingGPO -CreateGpoDisabled:$CreateGpoDisabled -SkipGpoLink:$SkipGpoLink -GpoNamePrefix $GpoNamePrefix
                 }
             }
+            Start-Sleep -Milliseconds 5000
 
             if (Use-MDIConfigName $config 'ConfigurationContainerAuditing') { Set-MDIConfigurationContainerAuditing -Force:$Force }
+            Start-Sleep -Milliseconds 5000
 
             if (Use-MDIConfigName $config 'DomainObjectAuditing') { Set-MDIDomainObjectAuditing }
+            Start-Sleep -Milliseconds 5000
 
             if (Use-MDIConfigName $config 'NTLMAuditing') {
                 if ($Mode -eq 'LocalMachine') {
@@ -2007,6 +2137,7 @@ function Set-MDIConfiguration {
                     Set-MDINTLMAuditingGPO -CreateGpoDisabled:$CreateGpoDisabled -SkipGpoLink:$SkipGpoLink -GpoNamePrefix $GpoNamePrefix
                 }
             }
+            Start-Sleep -Milliseconds 5000
 
             if (Use-MDIConfigName $config 'ProcessorPerformance') {
                 if ($Mode -eq 'LocalMachine') {
@@ -2015,6 +2146,7 @@ function Set-MDIConfiguration {
                     Set-MDIProcessorPerformanceGPO -CreateGpoDisabled:$CreateGpoDisabled -SkipGpoLink:$SkipGpoLink -GpoNamePrefix $GpoNamePrefix
                 }
             }
+            Start-Sleep -Milliseconds 5000
         }
     }
 }
