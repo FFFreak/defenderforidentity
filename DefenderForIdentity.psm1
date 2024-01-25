@@ -638,10 +638,7 @@ function Get-MDIProcessorPerformanceGPO {
         [string] $GpoNamePrefix
     )
     $gpoName = Get-MDIGPOName -Name $settings.ProcessorPerformance.GpoName -GpoNamePrefix $GpoNamePrefix
-
-    $gpoUpdated = $null
     $gpo = Get-MDIGPO -Name $gpoName
-
     if ($gpo) {
         if ($script:adServer -ne $null) {
             $gpo | Select-Object -Property *,
@@ -2093,7 +2090,7 @@ function Set-MDIConfiguration {
           $script:adServer = $Server
         }
         foreach ($config in $Configuration) {
-	    
+
             Write-Verbose ($strings['Configuration_Set'] -f $config)
             if (Use-MDIConfigName $config 'AdfsAuditing') { Set-MDIAdfsAuditing }
 
@@ -2104,7 +2101,6 @@ function Set-MDIConfiguration {
                     Set-MDIAdvancedAuditPolicyCAsGPO -CreateGpoDisabled:$CreateGpoDisabled -SkipGpoLink:$SkipGpoLink -GpoNamePrefix $GpoNamePrefix
                 }
             }
-            Start-Sleep -Milliseconds 500
 
             if (Use-MDIConfigName $config 'AdvancedAuditPolicyDCs') {
                 if ($Mode -eq 'LocalMachine') {
@@ -2113,7 +2109,6 @@ function Set-MDIConfiguration {
                     Set-MDIAdvancedAuditPolicyDCsGPO -CreateGpoDisabled:$CreateGpoDisabled -SkipGpoLink:$SkipGpoLink -GpoNamePrefix $GpoNamePrefix
                 }
             }
-            Start-Sleep -Milliseconds 5000
 
             if (Use-MDIConfigName $config 'CAAuditing') {
                 if ($Mode -eq 'LocalMachine') {
@@ -2122,13 +2117,10 @@ function Set-MDIConfiguration {
                     Set-MDICAAuditingGPO -CreateGpoDisabled:$CreateGpoDisabled -SkipGpoLink:$SkipGpoLink -GpoNamePrefix $GpoNamePrefix
                 }
             }
-            Start-Sleep -Milliseconds 5000
 
             if (Use-MDIConfigName $config 'ConfigurationContainerAuditing') { Set-MDIConfigurationContainerAuditing -Force:$Force }
-            Start-Sleep -Milliseconds 5000
 
             if (Use-MDIConfigName $config 'DomainObjectAuditing') { Set-MDIDomainObjectAuditing }
-            Start-Sleep -Milliseconds 5000
 
             if (Use-MDIConfigName $config 'NTLMAuditing') {
                 if ($Mode -eq 'LocalMachine') {
@@ -2137,7 +2129,6 @@ function Set-MDIConfiguration {
                     Set-MDINTLMAuditingGPO -CreateGpoDisabled:$CreateGpoDisabled -SkipGpoLink:$SkipGpoLink -GpoNamePrefix $GpoNamePrefix
                 }
             }
-            Start-Sleep -Milliseconds 5000
 
             if (Use-MDIConfigName $config 'ProcessorPerformance') {
                 if ($Mode -eq 'LocalMachine') {
@@ -2146,7 +2137,6 @@ function Set-MDIConfiguration {
                     Set-MDIProcessorPerformanceGPO -CreateGpoDisabled:$CreateGpoDisabled -SkipGpoLink:$SkipGpoLink -GpoNamePrefix $GpoNamePrefix
                 }
             }
-            Start-Sleep -Milliseconds 5000
         }
     }
 }
